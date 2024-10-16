@@ -59,13 +59,14 @@ def unbatchify(x: jnp.ndarray, agent_list, num_envs, num_actors):
     return {a: x[i] for i, a in enumerate(agent_list)}
         
 
-@hydra.main(version_base=None, config_path="config", config_name="jaxnav-sfl")
+@hydra.main(version_base=None, config_path="config", config_name="jaxnav-sfl-barn")
 def main(config):
-    
+        
     config = OmegaConf.to_container(config)
+    print('entity', config["ENTITY"])
     run = wandb.init(
-        group=config["GROUP_NAME"],
-        entity=config["ENTITY"],
+        # group=config["GROUP_NAME"],
+        # entity=config["ENTITY"],
         project=config["PROJECT"],
         tags=["IPPO", "RNN", "DR", f"ts: {config['env']['test_set']}"],
         config=config,
@@ -662,12 +663,12 @@ def main(config):
         runner_state_instances, metrics = jax.lax.scan(train_step, runner_state_instances, None, t_config["EVAL_FREQ"])
         # EVAL
         
-        test_metrics = {
-            "learnability_set_scores": learnabilty_scores,
-            "learnability_set_mean_score": learnabilty_scores.mean(),
-        }
-        test_metrics["singleton-test-metrics"] = eval_singleton_runner.run(eval_singleton_rng, runner_state[0].params)
-        test_metrics["sampled-test-metrics"] = eval_sampled_runner.run(eval_sampled_rng, runner_state[0].params)
+        test_metrics = {}
+        #     "learnability_set_scores": learnabilty_scores,
+        #     "learnability_set_mean_score": learnabilty_scores.mean(),
+        # }
+        # test_metrics["singleton-test-metrics"] = eval_singleton_runner.run(eval_singleton_rng, runner_state[0].params)
+        # test_metrics["sampled-test-metrics"] = eval_sampled_runner.run(eval_sampled_rng, runner_state[0].params)
         
         runner_state, _ = runner_state_instances
         test_metrics["update_count"] = runner_state[-2]
@@ -695,23 +696,23 @@ def main(config):
         rng, eval_rng = jax.random.split(rng)
         runner_state, instances, metrics = train_and_eval_step(runner_state, eval_rng)
         curr_time = time.time()
-        log_buffer(*instances, metrics["update_count"])
-        metrics['time_delta'] = curr_time - start_time
-        metrics["steps_per_section"] = (t_config["EVAL_FREQ"] * t_config["NUM_STEPS"] * t_config["NUM_ENVS"]) / metrics['time_delta']
-        wandb.log(metrics, step=metrics["update_count"])
-        if (eval_step % checkpoint_steps == 0) & (eval_step > 0):    
-            if config["SAVE_PATH"] is not None:
-                params = runner_state[0].params
+        # log_buffer(*instances, metrics["update_count"])
+        # metrics['time_delta'] = curr_time - start_time
+        # metrics["steps_per_section"] = (t_config["EVAL_FREQ"] * t_config["NUM_STEPS"] * t_config["NUM_ENVS"]) / metrics['time_delta']
+        # wandb.log(metrics, step=metrics["update_count"])
+        # if (eval_step % checkpoint_steps == 0) & (eval_step > 0):    
+        #     if config["SAVE_PATH"] is not None:
+        #         params = runner_state[0].params
                 
-                save_dir = os.path.join(config["SAVE_PATH"], run.name)
-                os.makedirs(save_dir, exist_ok=True)
-                save_params(params, f'{save_dir}/model.safetensors')
-                print(f'Parameters of saved in {save_dir}/model.safetensors')
+        #         save_dir = os.path.join(config["SAVE_PATH"], run.name)
+        #         os.makedirs(save_dir, exist_ok=True)
+        #         save_params(params, f'{save_dir}/model.safetensors')
+        #         print(f'Parameters of saved in {save_dir}/model.safetensors')
                 
-                # upload this to wandb as an artifact   
-                artifact = wandb.Artifact(f'{run.name}-checkpoint', type='checkpoint')
-                artifact.add_file(f'{save_dir}/model.safetensors')
-                artifact.save()
+        #         # upload this to wandb as an artifact   
+        #         artifact = wandb.Artifact(f'{run.name}-checkpoint', type='checkpoint')
+        #         artifact.add_file(f'{save_dir}/model.safetensors')
+        #         artifact.save()
                 
     if config["SAVE_PATH"] is not None:
         params = runner_state[0].params
