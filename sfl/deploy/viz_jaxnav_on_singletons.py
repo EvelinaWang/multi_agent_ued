@@ -20,11 +20,12 @@ from sfl.runners import EvalSingletonsRunner
     
 def main():
     # run_id = "amacrutherford/ma_ippo_plr/om2y9k9i" # "amacrutherford/ma_ippo_plr/imcl54h7" 
-    run_id = "alex-plus/multi_robot_ued/m4bcdtmb"
+    run_id = "evelinawg-university-of-oxford/jaxnav-poly/f7twg77n"
     api = wandb.Api()
     run = api.run(run_id)
     config = run.config
-    config["test_set"] = "multi"
+    # config["test_set"] = "multi"
+    config["test_set"] = "single" #mortified
     
     run_name = run.name
     print(f'-- deploying {run_name} on {config["test_set"]} test set--')

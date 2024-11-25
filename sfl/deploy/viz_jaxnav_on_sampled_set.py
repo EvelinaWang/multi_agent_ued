@@ -62,15 +62,22 @@ def get_data_for_run(run_name: str, env_instances: EnvInstance):
   env = JaxNav(num_agents=num_agents, do_sep_reward=False, **config["env"]["env_params"])
   obs, states = jax.vmap(env.set_env_instance, in_axes=(0))(env_instances)
   print('pos shape', states.pos.shape)
-  # LOAD PARAMS
-  model_artificat = api.artifact(f"{run.entity}/{run.project}/{run.name}-checkpoint:latest") # NOTE hardcoded
-  name = model_artificat.download()
-  network_params = load_params(name + "/model.safetensors")
+  # # LOAD PARAMS
+  # model_artificat = api.artifact(f"{run.entity}/{run.project}/{run.name}-checkpoint:latest") # NOTE hardcoded
+  # name = model_artificat.download()
+  
+  local_checkpoint_path = "checkpoints/multi_robot_ued/easy-brook-48"
+  
+  
+  network_params = load_params(local_checkpoint_path + "/model.safetensors")
 
   config["learning"]["LOG_DORMANCY"] = True
   config["learning"]["USE_LAYER_NORM"] = False
+  print("Available agents:", env.action_spaces.keys())
+
+
   network = ActorCriticRNN(
-    action_dim=env.action_space().shape[1],
+    action_dim=env.action_space(agent='agent_0').shape[0],
     config=config["learning"],
   )
   rng = jax.random.PRNGKey(10)
@@ -110,7 +117,7 @@ def get_data_for_run(run_name: str, env_instances: EnvInstance):
 
 def main():
   
-  dataset_path = "jax_multirobsim/data/test_sets/sampled_tc_100e_1a.pkl"
+  dataset_path = "sfl/data/test_sets/barn_test_10_1a.pkl"
 
   # load
   with open(dataset_path, "rb") as f:
@@ -124,8 +131,10 @@ def main():
   print("num_envs", num_envs)
 
   # table = save_maps_to_table(env, env_instances)
+  
+  
 
-  runs = ["alex-plus/multi_robot_ued/htqyilsk"]
+  runs = ["evelinawg-university-of-oxford/jaxnav-barn/cr0zc2z0"]
   for run in tqdm.tqdm(runs, desc="Evaluating runs"):
     run_name, results = get_data_for_run(run, env_instances)
     

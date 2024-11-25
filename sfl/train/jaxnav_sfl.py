@@ -59,7 +59,7 @@ def unbatchify(x: jnp.ndarray, agent_list, num_envs, num_actors):
     return {a: x[i] for i, a in enumerate(agent_list)}
         
 
-@hydra.main(version_base=None, config_path="config", config_name="jaxnav-sfl-barn")
+@hydra.main(version_base=None, config_path="config", config_name="jaxnav-sfl-barn") #modified
 def main(config):
         
     config = OmegaConf.to_container(config)
@@ -70,7 +70,7 @@ def main(config):
         project=config["PROJECT"],
         tags=["IPPO", "RNN", "DR", f"ts: {config['env']['test_set']}"],
         config=config,
-        mode=config["WANDB_MODE"],
+        mode=config["WANDB_MODE"],  
     )
         
     rng = jax.random.PRNGKey(config["SEED"])
@@ -564,26 +564,57 @@ def main(config):
             traj_batch.info,
         )
         rng = update_state[-1]
-
+        
         def callback(metric):
-            wandb.log(
-                {
-                    "train-term": metric["terminations"],
-                    #"reward": metric["returned_episode_returns"],
+            try:
+                print("Logging metrics to wandb...")
+                for key, value in metric.items():
+                    if isinstance(value, (float, int)):
+                        if not np.isfinite(value):
+                            raise ValueError(f"Invalid value for {key}: {value}")
+                    elif isinstance(value, dict):
+                        for sub_key, sub_value in value.items():
+                            if not np.isfinite(sub_value):
+                                raise ValueError(f"Invalid value for {key}.{sub_key}: {sub_value}")
+                wandb.log(
+                    {
+                        "train-term": metric["terminations"],
+                        #"reward": metric["returned_episode_returns"],
+                        
+                        # "eval-collision": metric["test-metrics"]["collision-by-env"].mean(),
+                        # "eval-timeout": metric["test-metrics"]["timeout-by-env"].mean(),
+                        "env_step": metric["update_steps"]
+                            * t_config["NUM_ENVS"]
+                            * t_config["NUM_STEPS"],
+                        "dormancy/": metric["dormancy"],
+                        "env-metrics/": metric["env-metrics"],
+                        # "mean_ued_score": metric["mean_ued_score"],
+                        **metric["episodic_return_length"],
+                        **metric["loss_info"],
+                        "mean_lambda_val": metric["mean_lambda_val"],
+                    })
+            except Exception as e:
+                print(f"Error logging to wandb: {e}")
+
+        # def callback(metric):
+        #     wandb.log(
+        #         {
+        #             "train-term": metric["terminations"],
+        #             #"reward": metric["returned_episode_returns"],
                     
-                    # "eval-collision": metric["test-metrics"]["collision-by-env"].mean(),
-                    # "eval-timeout": metric["test-metrics"]["timeout-by-env"].mean(),
-                    "env_step": metric["update_steps"]
-                        * t_config["NUM_ENVS"]
-                        * t_config["NUM_STEPS"],
-                    "dormancy/": metric["dormancy"],
-                    "env-metrics/": metric["env-metrics"],
-                    # "mean_ued_score": metric["mean_ued_score"],
-                    **metric["episodic_return_length"],
-                    **metric["loss_info"],
-                    "mean_lambda_val": metric["mean_lambda_val"],
-                }
-            )
+        #             # "eval-collision": metric["test-metrics"]["collision-by-env"].mean(),
+        #             # "eval-timeout": metric["test-metrics"]["timeout-by-env"].mean(),
+        #             "env_step": metric["update_steps"]
+        #                 * t_config["NUM_ENVS"]
+        #                 * t_config["NUM_STEPS"],
+        #             "dormancy/": metric["dormancy"],
+        #             "env-metrics/": metric["env-metrics"],
+        #             # "mean_ued_score": metric["mean_ued_score"],
+        #             **metric["episodic_return_length"],
+        #             **metric["loss_info"],
+        #             "mean_lambda_val": metric["mean_lambda_val"],
+        #         }
+        #     )
 
         dormancy_log = {
             "actor": dormancy.actor,
@@ -612,7 +643,12 @@ def main(config):
         metric["dormancy"] = dormancy_log
         metric["env-metrics"] = jax.tree_map(lambda x: x.mean(), jax.vmap(env.get_env_metrics)(start_state))
         metric["mean_lambda_val"] = env_state.rew_lambda.mean()
-        jax.experimental.io_callback(callback, None, metric)
+        
+        print("before callback")
+        with jax.disable_jit():
+            jax.experimental.io_callback(callback, None, metric)
+        print("after callback")
+
         
         # SAMPLE NEW ENVS
         rng, _rng = jax.random.split(rng)
@@ -663,12 +699,12 @@ def main(config):
         runner_state_instances, metrics = jax.lax.scan(train_step, runner_state_instances, None, t_config["EVAL_FREQ"])
         # EVAL
         
-        test_metrics = {}
-        #     "learnability_set_scores": learnabilty_scores,
-        #     "learnability_set_mean_score": learnabilty_scores.mean(),
-        # }
-        # test_metrics["singleton-test-metrics"] = eval_singleton_runner.run(eval_singleton_rng, runner_state[0].params)
-        # test_metrics["sampled-test-metrics"] = eval_sampled_runner.run(eval_sampled_rng, runner_state[0].params)
+        test_metrics = {
+            "learnability_set_scores": learnabilty_scores,
+            "learnability_set_mean_score": learnabilty_scores.mean(),
+        }
+        test_metrics["singleton-test-metrics"] = eval_singleton_runner.run(eval_singleton_rng, runner_state[0].params)
+        test_metrics["sampled-test-metrics"] = eval_sampled_runner.run(eval_sampled_rng, runner_state[0].params)
         
         runner_state, _ = runner_state_instances
         test_metrics["update_count"] = runner_state[-2]
@@ -696,23 +732,23 @@ def main(config):
         rng, eval_rng = jax.random.split(rng)
         runner_state, instances, metrics = train_and_eval_step(runner_state, eval_rng)
         curr_time = time.time()
-        # log_buffer(*instances, metrics["update_count"])
-        # metrics['time_delta'] = curr_time - start_time
-        # metrics["steps_per_section"] = (t_config["EVAL_FREQ"] * t_config["NUM_STEPS"] * t_config["NUM_ENVS"]) / metrics['time_delta']
-        # wandb.log(metrics, step=metrics["update_count"])
-        # if (eval_step % checkpoint_steps == 0) & (eval_step > 0):    
-        #     if config["SAVE_PATH"] is not None:
-        #         params = runner_state[0].params
+        log_buffer(*instances, metrics["update_count"])
+        metrics['time_delta'] = curr_time - start_time
+        metrics["steps_per_section"] = (t_config["EVAL_FREQ"] * t_config["NUM_STEPS"] * t_config["NUM_ENVS"]) / metrics['time_delta']
+        wandb.log(metrics, step=metrics["update_count"])
+        if (eval_step % checkpoint_steps == 0) & (eval_step > 0):    
+            if config["SAVE_PATH"] is not None:
+                params = runner_state[0].params
                 
-        #         save_dir = os.path.join(config["SAVE_PATH"], run.name)
-        #         os.makedirs(save_dir, exist_ok=True)
-        #         save_params(params, f'{save_dir}/model.safetensors')
-        #         print(f'Parameters of saved in {save_dir}/model.safetensors')
+                save_dir = os.path.join(config["SAVE_PATH"], run.name)
+                os.makedirs(save_dir, exist_ok=True)
+                save_params(params, f'{save_dir}/model.safetensors')
+                print(f'Parameters of saved in {save_dir}/model.safetensors')
                 
-        #         # upload this to wandb as an artifact   
-        #         artifact = wandb.Artifact(f'{run.name}-checkpoint', type='checkpoint')
-        #         artifact.add_file(f'{save_dir}/model.safetensors')
-        #         artifact.save()
+                # upload this to wandb as an artifact   
+                artifact = wandb.Artifact(f'{run.name}-checkpoint', type='checkpoint')
+                artifact.add_file(f'{save_dir}/model.safetensors')
+                artifact.save()
                 
     if config["SAVE_PATH"] is not None:
         params = runner_state[0].params

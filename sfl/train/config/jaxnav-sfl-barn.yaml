@@ -17,11 +17,13 @@ env:
    map_id: "Grid-Rand-Barn"
    map_params:
     map_size: [30, 30]
+    fill: 0.25
+    start_pad: 2
 
 learning:
   # "NUM_ENVS": 256  
-  "LR": 5e-5
-  "NUM_STEPS": 500
+  "LR": 7e-5
+  "NUM_STEPS": 500 #1500
   # "NUM_UPDATES": 15
   "NUM_ENVS_FROM_SAMPLED": 128
   "NUM_ENVS_TO_GENERATE": 128
@@ -29,9 +31,9 @@ learning:
 # SAMPLE LEARNABILITY 
 "BATCH_SIZE": 1000
 "NUM_BATCHES": 5
-"ROLLOUT_STEPS": 3000
+"ROLLOUT_STEPS": 3000 #1500
 "NUM_TO_SAVE": 100
-"EVAL_SAMPLED_SET_PATH": "/home/evelina/sampling-for-learnability/sfl/data/test_sets/sampled_tc_100e_1a.pkl"
+"EVAL_SAMPLED_SET_PATH": "/home/evelina/sampling-for-learnability/sfl/data/test_sets/barn_test_300_1a.pkl"
 
 # defaults:
 #   - env: jaxnav
