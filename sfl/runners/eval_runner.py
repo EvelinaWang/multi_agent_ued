@@ -306,6 +306,7 @@ class EvalSampledRunner:
         eval_stats[f'eval-sampled/ep_len'] = o_by_actor["ep_len"][0]
         
         eval_stats["eval-sampled/overall_win_rate"] = o_by_env["success_rate"].mean()
+        eval_stats["eval-sampled/overall_win_rate_variance"] = o_by_env["success_rate"].var() #edited to variance 
         eval_stats["eval-sampled/overall_mean_return"] = o_by_env["ep_return"].mean()
         
         
@@ -357,7 +358,9 @@ class EvalSampledRunner:
         eval_stats[f'eval-sampled/returns'] = o_by_actor["ep_return"]
         eval_stats[f'eval-sampled/ep_len'] = o_by_actor["ep_len"][0]
         
-        eval_stats["eval-sampled/overall_win_rate_by_env"] = o_by_env["success_rate"].mean()
+        eval_stats["eval-sampled/overall_win_rate_by_env"] = o_by_env["success_rate"].mean() 
+        eval_stats["eval-sampled/overall_win_rate_variance"] = o_by_env["success_rate"].var() #edited the variance of win rate
+
         eval_stats["eval-sampled/overall_mean_return_by_env"] = o_by_env["ep_return"].mean()
         print('success by env', o_by_env["success_rate"])
         print(f'overall success rate {eval_stats["eval-sampled/overall_win_rate_by_env"]}, mean return: {eval_stats["eval-sampled/overall_mean_return_by_env"]}')

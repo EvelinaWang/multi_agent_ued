@@ -1,7 +1,7 @@
 """
 Run SFL on JaxNav, both single and multi-agent variations.
 """
-
+import sys
 import jax
 import jax.experimental
 import jax.numpy as jnp
@@ -565,56 +565,41 @@ def main(config):
         )
         rng = update_state[-1]
         
-        def callback(metric):
-            try:
-                print("Logging metrics to wandb...")
-                for key, value in metric.items():
-                    if isinstance(value, (float, int)):
-                        if not np.isfinite(value):
-                            raise ValueError(f"Invalid value for {key}: {value}")
-                    elif isinstance(value, dict):
-                        for sub_key, sub_value in value.items():
-                            if not np.isfinite(sub_value):
-                                raise ValueError(f"Invalid value for {key}.{sub_key}: {sub_value}")
-                wandb.log(
-                    {
-                        "train-term": metric["terminations"],
-                        #"reward": metric["returned_episode_returns"],
-                        
-                        # "eval-collision": metric["test-metrics"]["collision-by-env"].mean(),
-                        # "eval-timeout": metric["test-metrics"]["timeout-by-env"].mean(),
-                        "env_step": metric["update_steps"]
-                            * t_config["NUM_ENVS"]
-                            * t_config["NUM_STEPS"],
-                        "dormancy/": metric["dormancy"],
-                        "env-metrics/": metric["env-metrics"],
-                        # "mean_ued_score": metric["mean_ued_score"],
-                        **metric["episodic_return_length"],
-                        **metric["loss_info"],
-                        "mean_lambda_val": metric["mean_lambda_val"],
-                    })
-            except Exception as e:
-                print(f"Error logging to wandb: {e}")
+        def log_sizes(data, prefix=""):
+            if isinstance(data, dict):
+                for key, value in data.items():
+                    log_sizes(value, prefix + key + "/")
+            elif isinstance(data, (list, tuple)):
+                print(f"{prefix}: {sys.getsizeof(data)} bytes, length: {len(data)}")
+            else:
+                print(f"{prefix}: {sys.getsizeof(data)} bytes")
 
-        # def callback(metric):
-        #     wandb.log(
-        #         {
-        #             "train-term": metric["terminations"],
-        #             #"reward": metric["returned_episode_returns"],
+
+    
+        def callback(metric):
+            
+            # print("traj_batch.info keys:", traj_batch.info.keys())
+            # print("metric['terminations']:", metric.get("terminations", "Key not found"))
+
+    
+            wandb.log(
+                {
+                    "train-term": metric["terminations"],
+                    #"reward": metric["returned_episode_returns"],
                     
-        #             # "eval-collision": metric["test-metrics"]["collision-by-env"].mean(),
-        #             # "eval-timeout": metric["test-metrics"]["timeout-by-env"].mean(),
-        #             "env_step": metric["update_steps"]
-        #                 * t_config["NUM_ENVS"]
-        #                 * t_config["NUM_STEPS"],
-        #             "dormancy/": metric["dormancy"],
-        #             "env-metrics/": metric["env-metrics"],
-        #             # "mean_ued_score": metric["mean_ued_score"],
-        #             **metric["episodic_return_length"],
-        #             **metric["loss_info"],
-        #             "mean_lambda_val": metric["mean_lambda_val"],
-        #         }
-        #     )
+                    # "eval-collision": metric["test-metrics"]["collision-by-env"].mean(),
+                    # "eval-timeout": metric["test-metrics"]["timeout-by-env"].mean(),
+                    "env_step": metric["update_steps"]
+                        * t_config["NUM_ENVS"]
+                        * t_config["NUM_STEPS"],
+                    "dormancy/": metric["dormancy"],
+                    # "env-metrics/": metric["env-metrics"],
+                    # "mean_ued_score": metric["mean_ued_score"],
+                    **metric["episodic_return_length"],
+                    **metric["loss_info"],
+                    "mean_lambda_val": metric["mean_lambda_val"],
+                }
+            )
 
         dormancy_log = {
             "actor": dormancy.actor,
@@ -625,7 +610,8 @@ def main(config):
         }
         ratio0 = jnp.around(loss_info[1][3].at[0,0].get().mean(), decimals=6)
         loss_info = jax.tree_map(lambda x: x.mean(), loss_info)
-        metric["loss_info"] = {
+        ac_metric={}
+        ac_metric["loss_info"] = {
             "total_loss": loss_info[0],
             "value_loss": loss_info[1][0],
             "actor_loss": loss_info[1][1],
@@ -636,19 +622,18 @@ def main(config):
             "clipfrac": loss_info[1][5],
             "mask_percentage": jnp.mean(traj_batch.mask),
         }
-        metric["episodic_return_length"] = episodic_return_length
-        metric["update_steps"] = update_steps
-        metric["terminations"] = {k: traj_batch.info[k] for k in ["NumC", "GoalR", "AgentC", "MapC", "TimeO"]}
-        metric["terminations"] = jax.tree_map(lambda x: x.sum(), metric["terminations"])
-        metric["dormancy"] = dormancy_log
-        metric["env-metrics"] = jax.tree_map(lambda x: x.mean(), jax.vmap(env.get_env_metrics)(start_state))
-        metric["mean_lambda_val"] = env_state.rew_lambda.mean()
+        ac_metric["episodic_return_length"] = episodic_return_length
+        ac_metric["update_steps"] = update_steps
+        ac_metric["terminations"] = {k: traj_batch.info[k] for k in ["NumC", "GoalR", "AgentC", "MapC", "TimeO"]}
+        ac_metric["terminations"] = jax.tree_map(lambda x: x.sum(), ac_metric["terminations"])
+        ac_metric["dormancy"] = dormancy_log
+        # ac_metric["env-metrics"] = jax.tree_map(lambda x: x.mean(), jax.vmap(env.get_env_metrics)(start_state))
+        ac_metric["mean_lambda_val"] = env_state.rew_lambda.mean()
+        # metric
         
-        print("before callback")
-        with jax.disable_jit():
-            jax.experimental.io_callback(callback, None, metric)
-        print("after callback")
-
+        # jax.debug.print("before callback")
+        jax.experimental.io_callback(callback, None, ac_metric)
+        # jax.debug.print("after callback")
         
         # SAMPLE NEW ENVS
         rng, _rng = jax.random.split(rng)
@@ -735,7 +720,7 @@ def main(config):
         log_buffer(*instances, metrics["update_count"])
         metrics['time_delta'] = curr_time - start_time
         metrics["steps_per_section"] = (t_config["EVAL_FREQ"] * t_config["NUM_STEPS"] * t_config["NUM_ENVS"]) / metrics['time_delta']
-        wandb.log(metrics, step=metrics["update_count"])
+        wandb.log(metrics, step=metrics["update_count"], )
         if (eval_step % checkpoint_steps == 0) & (eval_step > 0):    
             if config["SAVE_PATH"] is not None:
                 params = runner_state[0].params

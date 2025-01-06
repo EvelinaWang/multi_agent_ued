@@ -2,7 +2,7 @@ command:
   - python3
   - ${program}
   - ${args_no_hyphens}
-entity: alex-plus
+entity: evelinawg-university-of-oxford-org
 method: grid
 parameters:
   env.num_agents:

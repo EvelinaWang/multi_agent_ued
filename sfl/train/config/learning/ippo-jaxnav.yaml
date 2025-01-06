@@ -1,7 +1,7 @@
 "LR": 2.5e-4
 "NUM_ENVS": 256
 "NUM_STEPS": 512
-"TOTAL_TIMESTEPS": 3e8
+"TOTAL_TIMESTEPS": 5e8 #3e8
 "EVAL_TIMESTEPS": 2.5e7  # TODO move to just using eval freq (as it's used by plr)
 "EVAL_FREQ": 50
 "NUM_CHECKPOINTS": 4
